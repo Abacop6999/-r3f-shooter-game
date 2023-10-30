@@ -1,10 +1,9 @@
+import { Billboard, CameraControls, Text } from "@react-three/drei";
+import { useFrame, useThree } from "@react-three/fiber";
+import { CapsuleCollider, RigidBody, vec3 } from "@react-three/rapier";
+import { isHost } from "playroomkit";
 import { useEffect, useRef, useState } from "react";
 import { CharacterSoldier } from "./CharacterSoldier";
-import { CapsuleCollider, RigidBody, vec3 } from "@react-three/rapier";
-import { useFrame, useThree } from "@react-three/fiber";
-import { isHost } from "playroomkit";
-import { Billboard, CameraControls, Text } from "@react-three/drei";
-
 const MOVEMENT_SPEED = 202;
 const FIRE_RATE = 380;
 export const WEAPON_OFFSET = {
@@ -17,19 +16,17 @@ export const CharacterController = ({
   state,
   joystick,
   userPlayer,
-  onFire,
   onKilled,
-  isJumping,
-  setIsJumping,
+  onFire,
+  downgradedPerformance,
   ...props
 }) => {
   const group = useRef();
   const character = useRef();
   const rigidbody = useRef();
-  const controls = useRef();
-  const lastShoot = useRef(0);
-  const lastJumpTime = useRef(0);
   const [animation, setAnimation] = useState("Idle");
+  const [weapon, setWeapon] = useState("AK");
+  const lastShoot = useRef(0);
 
   const scene = useThree((state) => state.scene);
   const spawnRandomly = () => {
@@ -52,22 +49,18 @@ export const CharacterController = ({
     }
   }, []);
 
-  const jumpAudioRef = useRef(new Audio("/audios/hurt.mp3"));
-  jumpAudioRef.current.volume = 0.4;
-
-  const deathAudioRef = useRef(new Audio("/audios/dead.mp3"));
-  deathAudioRef.current.volume = 0.5;
-
   useEffect(() => {
     if (state.state.dead) {
-      const audio = deathAudioRef.current;
+      const audio = new Audio("/audios/dead.mp3");
+      audio.volume = 0.5;
       audio.play();
     }
   }, [state.state.dead]);
 
   useEffect(() => {
     if (state.state.health < 100) {
-      const audio = jumpAudioRef.current;
+      const audio = new Audio("/audios/hurt.mp3");
+      audio.volume = 0.4;
       audio.play();
     }
   }, [state.state.health]);
@@ -77,7 +70,7 @@ export const CharacterController = ({
     if (controls.current) {
       const cameraDistanceY = window.innerWidth < 1024 ? 16 : 20;
       const cameraDistanceZ = window.innerWidth < 1024 ? 12 : 16;
-      const playerWorldPos = vec3(rigidbody.current?.translation());
+      const playerWorldPos = vec3(rigidbody.current.translation());
       controls.current.setLookAt(
         playerWorldPos.x,
         playerWorldPos.y + (state.state.dead ? 12 : cameraDistanceY),
@@ -112,15 +105,6 @@ export const CharacterController = ({
       setAnimation("Idle");
     }
 
-    if (isHost()) {
-      state.setState("pos", rigidbody.current.translation());
-    } else {
-      const pos = state.getState("pos");
-      if (pos) {
-        rigidbody.current.setTranslation(pos);
-      }
-    }
-
     // Check if fire button is pressed
     if (joystick.isPressed("fire")) {
       // fire
@@ -130,7 +114,6 @@ export const CharacterController = ({
       if (isHost()) {
         if (Date.now() - lastShoot.current > FIRE_RATE) {
           lastShoot.current = Date.now();
-
           const newBullet = {
             id: state.id + "-" + +new Date(),
             position: vec3(rigidbody.current.translation()),
@@ -142,58 +125,31 @@ export const CharacterController = ({
       }
     }
 
-    // Check if jump button is pressed
-    if (joystick.isPressed("jump") && !state.state.dead && !isJumping) {
-      const currentTime = Date.now();
-
-      // Permite un salto si ha pasado suficiente tiempo desde el último
-      if (currentTime - lastJumpTime.current > 1000) {
-        // Ajusta el tiempo según tus necesidades
-        // Simula el salto moviendo el personaje hacia arriba
-        const jumpForce = 30; // Ajusta la fuerza de salto según tus necesidades
-        rigidbody.current.applyImpulse({ x: 0, y: jumpForce, z: 0 }, true);
-
-        // Aplica una fuerza adicional hacia adelante durante el salto
-        const forwardJumpForce = 20; // Ajusta la fuerza de avance durante el salto
-        const angle = joystick.angle();
-        if (angle) {
-          const forwardImpulse = {
-            x: Math.sin(angle) * forwardJumpForce,
-            y: 0,
-            z: Math.cos(angle) * forwardJumpForce,
-          };
-          rigidbody.current.applyImpulse(forwardImpulse, true);
-        }
-
-        // Reproducir el sonido de salto
-        if (userPlayer) {
-          const audio = jumpAudioRef.current;
-          audio.play();
-        }
-
-        // Actualizar el estado de salto en el componente local
-        setIsJumping(true);
-
-        setAnimation("Jump_Land");
-
-        // Actualiza el tiempo del último salto
-        lastJumpTime.current = currentTime;
+    if (isHost()) {
+      state.setState("pos", rigidbody.current.translation());
+    } else {
+      const pos = state.getState("pos");
+      if (pos) {
+        rigidbody.current.setTranslation(pos);
       }
     }
-
-    // Restablecer el estado de salto cuando el personaje toca el suelo
-    if (rigidbody.current.translation().y <= 0.1) {
-      setIsJumping(false);
-    }
   });
+  const controls = useRef();
+  const directionalLight = useRef();
+
+  useEffect(() => {
+    if (character.current && userPlayer) {
+      directionalLight.current.target = character.current;
+    }
+  }, [character.current]);
 
   return (
-    <group ref={group} {...props}>
+    <group {...props} ref={group}>
       {userPlayer && <CameraControls ref={controls} />}
       <RigidBody
         ref={rigidbody}
         colliders={false}
-        linearDamping={11}
+        linearDamping={12}
         lockRotations
         type={isHost() ? "dynamic" : "kinematicPosition"}
         onIntersectionEnter={({ other }) => {
@@ -227,6 +183,7 @@ export const CharacterController = ({
           <CharacterSoldier
             color={state.state.profile?.color}
             animation={animation}
+            weapon={weapon}
           />
           {userPlayer && (
             <Crosshair
@@ -234,9 +191,50 @@ export const CharacterController = ({
             />
           )}
         </group>
+        {userPlayer && (
+          // Finally I moved the light to follow the player
+          // This way we won't need to calculate ALL the shadows but only the ones
+          // that are in the camera view
+          <directionalLight
+            ref={directionalLight}
+            position={[25, 18, -25]}
+            intensity={0.3}
+            castShadow={!downgradedPerformance} // Disable shadows on low-end devices
+            shadow-camera-near={0}
+            shadow-camera-far={100}
+            shadow-camera-left={-20}
+            shadow-camera-right={20}
+            shadow-camera-top={20}
+            shadow-camera-bottom={-20}
+            shadow-mapSize-width={2048}
+            shadow-mapSize-height={2048}
+            shadow-bias={-0.0001}
+          />
+        )}
         <CapsuleCollider args={[0.7, 0.6]} position={[0, 1.28, 0]} />
       </RigidBody>
     </group>
+  );
+};
+
+const PlayerInfo = ({ state }) => {
+  const health = state.health;
+  const name = state.profile.name;
+  return (
+    <Billboard position-y={2.5}>
+      <Text position-y={0.36} fontSize={0.4}>
+        {name}
+        <meshBasicMaterial color={state.profile.color} />
+      </Text>
+      <mesh position-z={-0.1}>
+        <planeGeometry args={[1, 0.2]} />
+        <meshBasicMaterial color="black" transparent opacity={0.5} />
+      </mesh>
+      <mesh scale-x={health / 100} position-x={-0.5 * (1 - health / 100)}>
+        <planeGeometry args={[1, 0.2]} />
+        <meshBasicMaterial color="red" />
+      </mesh>
+    </Billboard>
   );
 };
 
@@ -271,26 +269,5 @@ const Crosshair = (props) => {
         <meshBasicMaterial color="black" opacity={0.2} transparent />
       </mesh>
     </group>
-  );
-};
-
-const PlayerInfo = ({ state }) => {
-  const health = state.health;
-  const name = state.profile.name;
-  return (
-    <Billboard position-y={2.5}>
-      <Text position-y={0.36} fontSize={0.4}>
-        {name}
-        <meshBasicMaterial color={state.profile.color} />
-      </Text>
-      <mesh position-z={-0.1}>
-        <planeGeometry args={[1, 0.2]} />
-        <meshBasicMaterial color="black" transparent opacity={0.5} />
-      </mesh>
-      <mesh scale-x={health / 100} position-x={-0.5 * (1 - health / 100)}>
-        <planeGeometry args={[1, 0.2]} />
-        <meshBasicMaterial color="red" />
-      </mesh>
-    </Billboard>
   );
 };

@@ -1,6 +1,4 @@
-import { Environment, OrbitControls } from "@react-three/drei";
-import { Map } from "./Map";
-import { useEffect, useState } from "react";
+import { Environment } from "@react-three/drei";
 import {
   Joystick,
   insertCoin,
@@ -9,23 +7,49 @@ import {
   onPlayerJoin,
   useMultiplayerState,
 } from "playroomkit";
-import { CharacterController } from "./CharacterController";
+import { useEffect, useState } from "react";
 import { Bullet } from "./Bullet";
 import { BulletHit } from "./BulletHit";
+import { CharacterController } from "./CharacterController";
+import { Map } from "./Map";
 
-export const Experience = () => {
+export const Experience = ({ downgradedPerformance = false }) => {
   const [players, setPlayers] = useState([]);
+  const start = async () => {
+    // Start the game
+    await insertCoin();
+
+    // Create a joystick controller for each joining player
+    onPlayerJoin((state) => {
+      // Joystick will only create UI for current player (myPlayer)
+      // For others, it will only sync their state
+      const joystick = new Joystick(state, {
+        type: "angular",
+        buttons: [{ id: "fire", label: "Fire" }],
+      });
+      const newPlayer = { state, joystick };
+      state.setState("health", 100);
+      state.setState("deaths", 0);
+      state.setState("kills", 0);
+      setPlayers((players) => [...players, newPlayer]);
+      state.onQuit(() => {
+        setPlayers((players) => players.filter((p) => p.state.id !== state.id));
+      });
+    });
+  };
+
+  useEffect(() => {
+    start();
+  }, []);
+
   const [bullets, setBullets] = useState([]);
+  const [hits, setHits] = useState([]);
+
   const [networkBullets, setNetworkBullets] = useMultiplayerState(
     "bullets",
     []
   );
-
-  const [hits, setHits] = useState([]);
-
   const [networkHits, setNetworkHits] = useMultiplayerState("hits", []);
-
-  const [isJumping, setIsJumping] = useState(false);
 
   const onFire = (bullet) => {
     setBullets((bullets) => [...bullets, bullet]);
@@ -48,37 +72,6 @@ export const Experience = () => {
     setNetworkHits(hits);
   }, [hits]);
 
-  const start = async () => {
-    // Show Playroom UI, let it handle players joining etc and wait for host to tap "Launch"
-    await insertCoin();
-
-    //Create a joystick controller for each joining player
-    onPlayerJoin((state) => {
-      // Joystick will only create UI for current player (myplayer)
-      // For otheres , it will onlt sync their state
-
-      const joystick = new Joystick(state, {
-        type: "angular",
-        buttons: [
-          { id: "fire", label: "Fire" },
-          { id: "jump", label: "Jump" },
-        ],
-      });
-      const newPlayer = { state, joystick };
-      state.setState("health", 100);
-      state.setState("deaths", 0);
-      state.setState("kills", 0);
-      setPlayers((players) => [...players, newPlayer]);
-      state.onQuit(() => {
-        setPlayers((players) => players.filter((p) => p.state.id !== state.id));
-      });
-    });
-  };
-
-  useEffect(() => {
-    start();
-  }, []);
-
   const onKilled = (_victim, killer) => {
     const killerState = players.find((p) => p.state.id === killer).state;
     killerState.setState("kills", killerState.state.kills + 1);
@@ -86,31 +79,16 @@ export const Experience = () => {
 
   return (
     <>
-      <directionalLight
-        position={[25, 18, -25]}
-        intensity={0.3}
-        castShadow
-        shadow-camera-near={0}
-        shadow-camera-far={80}
-        shadow-camera-left={-30}
-        shadow-camera-right={30}
-        shadow-camera-top={25}
-        shadow-camera-bottom={-25}
-        shadow-mapSize-width={4096}
-        shadow-mapSize-height={4096}
-        shadow-bias={-0.0001}
-      />
       <Map />
-      {players.map(({ state, joystick }, idx) => (
+      {players.map(({ state, joystick }, index) => (
         <CharacterController
           key={state.id}
           state={state}
           userPlayer={state.id === myPlayer()?.id}
           joystick={joystick}
-          onFire={onFire}
           onKilled={onKilled}
-          isJumping={isJumping}
-          setIsJumping={setIsJumping}
+          onFire={onFire}
+          downgradedPerformance={downgradedPerformance}
         />
       ))}
       {(isHost() ? bullets : networkBullets).map((bullet) => (
