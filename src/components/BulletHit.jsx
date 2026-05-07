@@ -4,6 +4,7 @@ import { isHost } from "playroomkit";
 import { useEffect, useMemo, useRef } from "react";
 import { Color, MathUtils, Vector3 } from "three";
 
+//test NVIM
 const bulletHitcolor = new Color("red");
 bulletHitcolor.multiplyScalar(12);
 
@@ -28,12 +29,12 @@ export const BulletHit = ({ nb = 100, position, onEnded }) => {
         target: new Vector3(
           MathUtils.randFloat(-0.6, 0.6),
           MathUtils.randFloat(-0.6, 0.6),
-          MathUtils.randFloat(-0.6, 0.6)
+          MathUtils.randFloat(-0.6, 0.6),
         ),
         scale: 0.1, //MathUtils.randFloat(0.03, 0.09),
         speed: MathUtils.randFloat(0.1, 0.3),
       })),
-    [nb]
+    [nb],
   );
 
   useEffect(() => {
